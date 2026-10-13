@@ -79,16 +79,19 @@ struct PreviewContent: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
 
         case .quote(let text):
-            HStack(alignment: .top, spacing: 0) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.accentColor.opacity(0.75))
-                    .frame(width: 3)
-                Text(styled(text, size: 14))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .padding(.leading, 10)
-                    .padding(.vertical, 2)
-            }
+            // 竖条用 background 实现：不参与尺寸计算（否则形状会被拉伸撑高整个引用块）
+            Text(styled(text, size: 14))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 13)
+                .padding(.vertical, 2)
+                .background(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.accentColor.opacity(0.75))
+                        .frame(width: 3)
+                        .padding(.trailing, 10)
+                }
 
         case .unorderedList(let items):
             VStack(alignment: .leading, spacing: 5) {
