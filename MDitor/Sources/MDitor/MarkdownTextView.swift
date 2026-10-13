@@ -30,6 +30,20 @@ struct MarkdownTextView: NSViewRepresentable {
         tv.autoresizingMask = [.width]
         tv.minSize = NSSize(width: 0, height: 0)
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        // 文本容器宽度跟随视图：窗口缩放时实时换行，而不是宽度确定后才重排
+        tv.textContainer?.widthTracksTextView = true
+        tv.textContainer?.containerSize = NSSize(width: tv.frame.width, height: .greatestFiniteMagnitude)
+        // 窗口缩放过程中强制按当前宽度重新排版
+        NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
+        ) { [weak scroll] _ in
+            guard let scroll,
+                  let tv = scroll.documentView as? NSTextView,
+                  let container = tv.textContainer else { return }
+            container.containerSize = NSSize(width: max(tv.frame.width, 50), height: .greatestFiniteMagnitude)
+            tv.layoutManager?.ensureLayout(for: container)
+            tv.needsDisplay = true
+        }
 
         editor.textView = tv
         tv.string = editor.text
