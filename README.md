@@ -55,6 +55,7 @@ MDitor/
 │   ├── build.sh                       # 一键构建脚本
 │   ├── make_icon.swift                # 图标生成
 │   ├── window_check.swift             # 窗口冒烟自检
+│   ├── preview_scroll_check.swift      # 预览区滚动回归自检（滚到底 + 代码块上滚轮）
 │   ├── lshandler.swift                # 文件类型默认应用查看/设置工具
 │   └── Info.plist                     # .app 配置模板
 └── resources/                         # 图标产物
@@ -67,6 +68,8 @@ MDitor/
 - 编译：零错误（swiftc `-O` 发行模式，arm64）
 - 单元测试：28 / 28 通过（标题、代码块、列表、任务清单、表格、引用、分隔线、段落、行内格式、HTML 导出）
 - 双击打开专项验证：应用未运行时双击 → 正确加载目标文件；运行中双击 → 正确切换内容，全程单窗口
+- 预览区滚动回归自检：`bash MDitor/scripts/build.sh` 后可运行 `.build/preview_check`
+  （校验「连续滚轮能滚到文档底部」与「滚轮打在代码块上预览仍能滚动」两个历史 bug 不再复现）
 
 ## 许可证
 
