@@ -219,6 +219,18 @@ struct PreviewScrollView: NSViewRepresentable {
         // 初始给一个足够大的高度，让 SwiftUI 内容完整布局、测得真实内容高度
         hosting.setFrameSize(NSSize(width: 800, height: 10000))
         scroll.documentView = hosting
+        // 窗口尺寸变化时按新宽度重新布局预览内容（否则内容不换行、被裁剪隐藏）
+        NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
+        ) { [weak scroll] _ in
+            guard let scroll,
+                  let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
+            let w = max(scroll.contentView.bounds.width, 100)
+            if abs(hosting.frame.width - w) > 1 {
+                hosting.setFrameSize(NSSize(width: w, height: hosting.frame.height))
+                hosting.needsLayout = true
+            }
+        }
         ScrollSync.shared.registerPreview(scroll)
         return scroll
     }
