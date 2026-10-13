@@ -211,6 +211,8 @@ struct PreviewScrollView: NSViewRepresentable {
     final class Coordinator {
         // 内容版本号：内容每次更新时递增，强制 PreviewContent 重建并重新上报高度
         var contentVersion = 0
+        // 窗口缩放停止后的完整重排任务（延迟执行，避免拖动过程中布局风暴/白屏）
+        var pendingRelayout: DispatchWorkItem?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -241,16 +243,31 @@ struct PreviewScrollView: NSViewRepresentable {
         hosting.setFrameSize(NSSize(width: 800, height: 100000))
         scroll.documentView = hosting
         // 窗口尺寸变化时按新宽度重新布局预览内容（否则内容不换行、被裁剪隐藏）。
-        // 只响应宽度变化：布局高度用大值保证不压缩，最终高度由内容上报恢复
+        // 拖动过程中只跟随宽度、保持当前高度（避免超大高度导致视口落在空白区 → 白屏）；
+        // 拖动停止 0.15s 后进行一次完整重排（大高度布局，保证内容不被 proposal 压缩）
+        let coordinator = context.coordinator
         NotificationCenter.default.addObserver(
             forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
-        ) { [weak scroll] _ in
+        ) { [weak scroll, weak coordinator] _ in
             guard let scroll,
                   let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
             let w = max(scroll.contentView.bounds.width, 100)
             if abs(hosting.frame.width - w) > 1 {
-                hosting.setFrameSize(NSSize(width: w, height: 100000))
+                hosting.setFrameSize(NSSize(width: w, height: hosting.frame.height))
                 hosting.needsLayout = true
+                // 拖动结束后完整重排
+                coordinator?.pendingRelayout?.cancel()
+                let item = DispatchWorkItem { [weak scroll] in
+                    guard let scroll,
+                          let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
+                    hosting.setFrameSize(NSSize(
+                        width: max(scroll.contentView.bounds.width, 100),
+                        height: 100000
+                    ))
+                    hosting.needsLayout = true
+                }
+                coordinator?.pendingRelayout = item
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
             }
         }
         ScrollSync.shared.registerPreview(scroll)
