@@ -30,8 +30,7 @@ struct PreviewContent: View {
                 }
             }
             .padding(28)
-            .frame(maxWidth: 780, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(heightReporter)
         }
     }
