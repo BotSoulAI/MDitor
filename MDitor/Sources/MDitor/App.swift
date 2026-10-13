@@ -76,8 +76,11 @@ struct ContentView: View {
                             .frame(width: editor.showPreview ? geo.size.width / 2 : geo.size.width)
                     }
                     if editor.showPreview {
-                        MarkdownPreview(markdown: editor.text)
-                            .frame(width: editor.showEditor ? geo.size.width / 2 : geo.size.width)
+                        MarkdownPreview(
+                            markdown: editor.text,
+                            width: editor.showEditor ? geo.size.width / 2 : geo.size.width
+                        )
+                        .frame(width: editor.showEditor ? geo.size.width / 2 : geo.size.width)
                     }
                 }
             }

@@ -4,9 +4,10 @@ import SwiftUI
 /// 实时预览：把解析出的块渲染为原生 SwiftUI 视图
 struct MarkdownPreview: View {
     let markdown: String
+    var width: CGFloat = 0
 
     var body: some View {
-        PreviewScrollView(markdown: markdown)
+        PreviewScrollView(markdown: markdown, width: width)
     }
 }
 
@@ -87,6 +88,7 @@ struct PreviewContent: View {
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 13)
                 .padding(.vertical, 2)
                 .background(alignment: .leading) {
@@ -103,6 +105,7 @@ struct PreviewContent: View {
                         Text("•").foregroundStyle(.secondary)
                         Text(styled(item, size: 15))
                             .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -114,6 +117,7 @@ struct PreviewContent: View {
                         Text("\(idx + 1).").foregroundStyle(.secondary)
                         Text(styled(item, size: 15))
                             .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -126,6 +130,7 @@ struct PreviewContent: View {
                             .foregroundStyle(item.checked ? Color.accentColor : Color.secondary)
                         Text(styled(item.text, size: 15))
                             .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -136,6 +141,7 @@ struct PreviewContent: View {
                     ForEach(Array(header.enumerated()), id: \.offset) { _, h in
                         Text(styled(h, size: 13, baseWeight: .bold))
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Divider()
@@ -144,6 +150,7 @@ struct PreviewContent: View {
                         ForEach(Array(padded(row, count: header.count).enumerated()), id: \.offset) { _, cell in
                             Text(styled(cell, size: 13))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -197,6 +204,9 @@ struct PreviewContent: View {
 /// documentView 高度由 PreviewContent 上报的真实布局高度决定，保证内容完整显示。
 struct PreviewScrollView: NSViewRepresentable {
     let markdown: String
+    /// 当前分栏实际宽度（由 ContentView 传入）：分栏切换/窗口缩放时该值变化，
+    /// 会触发 updateNSView 按新宽度重新布局（仅靠 markdown 变化无法感知分栏切换）
+    var width: CGFloat = 0
 
     final class Coordinator {
         // 内容版本号：内容每次更新时递增，强制 PreviewContent 重建并重新上报高度
@@ -256,8 +266,8 @@ struct PreviewScrollView: NSViewRepresentable {
             PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
                 .id(context.coordinator.contentVersion)
         )
-        // 只跟随视口宽度；高度用大值保证内容不被 proposal 压缩，最终高度由内容上报维护
-        let w = max(scroll.contentView.bounds.width, 100)
+        // 宽度以传入的分栏宽度为准（优先于自身测量），高度用大值保证不被 proposal 压缩
+        let w = max(width > 0 ? width : scroll.contentView.bounds.width, 100)
         if abs(hosting.frame.width - w) > 1 || hosting.frame.height < 10000 {
             hosting.setFrameSize(NSSize(width: w, height: 100000))
         }
