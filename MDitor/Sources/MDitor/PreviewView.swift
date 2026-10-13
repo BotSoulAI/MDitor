@@ -73,6 +73,8 @@ struct PreviewContent: View {
                         .textSelection(.enabled)
                         .padding(12)
                 }
+                // 垂直方向固定为内容高度，防止 ScrollView 被宿主高度 proposal 压缩/拉伸
+                .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
@@ -217,17 +219,18 @@ struct PreviewScrollView: NSViewRepresentable {
         )
         hosting.autoresizingMask = [.width]
         // 初始给一个足够大的高度，让 SwiftUI 内容完整布局、测得真实内容高度
-        hosting.setFrameSize(NSSize(width: 800, height: 10000))
+        hosting.setFrameSize(NSSize(width: 800, height: 100000))
         scroll.documentView = hosting
-        // 窗口尺寸变化时按新宽度重新布局预览内容（否则内容不换行、被裁剪隐藏）
+        // 窗口尺寸变化时按新宽度重新布局预览内容（否则内容不换行、被裁剪隐藏）。
+        // 注意：布局高度必须用大值，否则内容会按旧高度 proposal 被压缩（代码块/表格被裁剪）
         NotificationCenter.default.addObserver(
             forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
         ) { [weak scroll] _ in
             guard let scroll,
                   let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
             let w = max(scroll.contentView.bounds.width, 100)
-            if abs(hosting.frame.width - w) > 1 {
-                hosting.setFrameSize(NSSize(width: w, height: hosting.frame.height))
+            if abs(hosting.frame.width - w) > 1 || hosting.frame.height < 10000 {
+                hosting.setFrameSize(NSSize(width: w, height: 100000))
                 hosting.needsLayout = true
             }
         }
@@ -238,10 +241,11 @@ struct PreviewScrollView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
         hosting.rootView = PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
-        // 只跟随视口宽度，高度保持由内容上报维护（不得重置为固定值，
-        // 否则内容高度不变时 onChange 不触发、高度会停留在错误值上）
+        // 只跟随视口宽度；高度用大值保证内容不被 proposal 压缩，最终高度由内容上报维护
         let w = max(scroll.contentView.bounds.width, 100)
-        hosting.setFrameSize(NSSize(width: w, height: hosting.frame.height))
+        if abs(hosting.frame.width - w) > 1 || hosting.frame.height < 10000 {
+            hosting.setFrameSize(NSSize(width: w, height: 100000))
+        }
         hosting.needsLayout = true
     }
 }
