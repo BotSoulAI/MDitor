@@ -248,7 +248,7 @@ struct PreviewScrollView: NSViewRepresentable {
         let coordinator = context.coordinator
         NotificationCenter.default.addObserver(
             forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
-        ) { [weak scroll, weak coordinator] _ in
+        ) { [weak scroll, weak coordinator, markdown] _ in
             guard let scroll,
                   let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
             let w = max(scroll.contentView.bounds.width, 100)
@@ -257,9 +257,16 @@ struct PreviewScrollView: NSViewRepresentable {
                 hosting.needsLayout = true
                 // 拖动结束后完整重排
                 coordinator?.pendingRelayout?.cancel()
-                let item = DispatchWorkItem { [weak scroll] in
-                    guard let scroll,
+                let item = DispatchWorkItem { [weak scroll, weak coordinator, markdown] in
+                    guard let scroll, let coordinator,
                           let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
+                    // 重建预览内容：仅设大高度不会触发上报（geo 尺寸未变），
+                    // 必须重建强制 onAppear 上报真实高度，否则文档高度卡在大值上（大片空白）
+                    coordinator.contentVersion += 1
+                    hosting.rootView = AnyView(
+                        PreviewContent(markdown: markdown, heightChanged: self.heightUpdater(for: scroll))
+                            .id(coordinator.contentVersion)
+                    )
                     hosting.setFrameSize(NSSize(
                         width: max(scroll.contentView.bounds.width, 100),
                         height: 100000
