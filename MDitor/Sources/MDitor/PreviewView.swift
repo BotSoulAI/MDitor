@@ -10,9 +10,11 @@ struct MarkdownPreview: View {
     }
 }
 
-/// 预览内容（无滚动容器，供 NSHostingView 使用）
+/// 预览内容（无滚动容器，供 NSHostingView 使用）。
+/// 通过 heightChanged 上报真实布局高度，解决 NSHostingView 无法可靠测量内容高度的问题。
 struct PreviewContent: View {
     let markdown: String
+    var heightChanged: ((CGFloat) -> Void)? = nil
 
     var body: some View {
         let blocks = MarkdownParser.parse(markdown)
@@ -20,6 +22,7 @@ struct PreviewContent: View {
             Text("暂无内容")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 400)
+                .background(heightReporter)
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -29,6 +32,16 @@ struct PreviewContent: View {
             .padding(28)
             .frame(maxWidth: 780, alignment: .leading)
             .frame(maxWidth: .infinity)
+            .background(heightReporter)
+        }
+    }
+
+    /// 测量本视图实际布局尺寸并上报高度（宽度由宿主容器决定）
+    private var heightReporter: some View {
+        GeometryReader { geo in
+            Color.clear
+                .onAppear { heightChanged?(geo.size.height) }
+                .onChange(of: geo.size.height) { newHeight in heightChanged?(newHeight) }
         }
     }
 
@@ -174,17 +187,35 @@ struct PreviewContent: View {
     }
 }
 
-/// 预览区滚动容器：NSScrollView + NSHostingView，可被 ScrollSync 监听驱动
+/// 预览区滚动容器：NSScrollView + NSHostingView，可被 ScrollSync 监听驱动。
+/// documentView 高度由 PreviewContent 上报的真实布局高度决定，保证内容完整显示。
 struct PreviewScrollView: NSViewRepresentable {
     let markdown: String
+
+    private func heightUpdater(for scroll: NSScrollView) -> (CGFloat) -> Void {
+        { height in
+            DispatchQueue.main.async {
+                guard let doc = scroll.documentView else { return }
+                let target = max(height, scroll.contentView.bounds.height)
+                if abs(doc.frame.height - target) > 1 {
+                    doc.setFrameSize(NSSize(width: doc.frame.width, height: target))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                }
+            }
+        }
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = true
         scroll.backgroundColor = .textBackgroundColor
-        let hosting = NSHostingView(rootView: PreviewContent(markdown: markdown))
+        let hosting = NSHostingView(
+            rootView: PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
+        )
         hosting.autoresizingMask = [.width]
+        // 初始给一个足够大的高度，让 SwiftUI 内容完整布局、测得真实内容高度
+        hosting.setFrameSize(NSSize(width: 800, height: 10000))
         scroll.documentView = hosting
         ScrollSync.shared.registerPreview(scroll)
         return scroll
@@ -192,13 +223,10 @@ struct PreviewScrollView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
-        hosting.rootView = PreviewContent(markdown: markdown)
-        // 内容宽度 = 视口宽度，高度 = 内容自适应（至少撑满一屏）
+        hosting.rootView = PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
+        // 宽度跟随视口；高度先给足，让内容重新完整布局后由回调纠正
         let w = max(scroll.contentView.bounds.width, 100)
-        hosting.setFrameSize(NSSize(width: w, height: 0))
-        hosting.layoutSubtreeIfNeeded()
-        let h = hosting.fittingSize.height
-        hosting.setFrameSize(NSSize(width: w, height: max(h, scroll.contentView.bounds.height)))
+        hosting.setFrameSize(NSSize(width: w, height: 10000))
         hosting.needsLayout = true
     }
 }
