@@ -36,11 +36,13 @@ struct PreviewContent: View {
     }
 
     /// 测量本视图实际布局尺寸并上报高度（宽度由宿主容器决定）
+    /// 同时监听宽度变化：窗口缩放后即使内容高度不变也强制上报，防止宿主高度卡在大值上
     private var heightReporter: some View {
         GeometryReader { geo in
             Color.clear
                 .onAppear { heightChanged?(geo.size.height) }
                 .onChange(of: geo.size.height) { newHeight in heightChanged?(newHeight) }
+                .onChange(of: geo.size.width) { _ in heightChanged?(geo.size.height) }
         }
     }
 
@@ -196,6 +198,13 @@ struct PreviewContent: View {
 struct PreviewScrollView: NSViewRepresentable {
     let markdown: String
 
+    final class Coordinator {
+        // 内容版本号：内容每次更新时递增，强制 PreviewContent 重建并重新上报高度
+        var contentVersion = 0
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     private func heightUpdater(for scroll: NSScrollView) -> (CGFloat) -> Void {
         { height in
             DispatchQueue.main.async {
@@ -214,22 +223,22 @@ struct PreviewScrollView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = true
         scroll.backgroundColor = .textBackgroundColor
-        let hosting = NSHostingView(
-            rootView: PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
+        let hosting = NSHostingView<AnyView>(
+            rootView: AnyView(PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll)))
         )
         hosting.autoresizingMask = [.width]
         // 初始给一个足够大的高度，让 SwiftUI 内容完整布局、测得真实内容高度
         hosting.setFrameSize(NSSize(width: 800, height: 100000))
         scroll.documentView = hosting
         // 窗口尺寸变化时按新宽度重新布局预览内容（否则内容不换行、被裁剪隐藏）。
-        // 注意：布局高度必须用大值，否则内容会按旧高度 proposal 被压缩（代码块/表格被裁剪）
+        // 只响应宽度变化：布局高度用大值保证不压缩，最终高度由内容上报恢复
         NotificationCenter.default.addObserver(
             forName: NSView.frameDidChangeNotification, object: scroll, queue: .main
         ) { [weak scroll] _ in
             guard let scroll,
-                  let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
+                  let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
             let w = max(scroll.contentView.bounds.width, 100)
-            if abs(hosting.frame.width - w) > 1 || hosting.frame.height < 10000 {
+            if abs(hosting.frame.width - w) > 1 {
                 hosting.setFrameSize(NSSize(width: w, height: 100000))
                 hosting.needsLayout = true
             }
@@ -239,8 +248,14 @@ struct PreviewScrollView: NSViewRepresentable {
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
-        hosting.rootView = PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
+        guard let hosting = scroll.documentView as? NSHostingView<AnyView> else { return }
+        // 内容更新时强制重建预览（递增 id），确保 onAppear 重新上报真实高度，
+        // 避免内容变化但布局尺寸不变时高度卡在上一次的大值上
+        context.coordinator.contentVersion += 1
+        hosting.rootView = AnyView(
+            PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
+                .id(context.coordinator.contentVersion)
+        )
         // 只跟随视口宽度；高度用大值保证内容不被 proposal 压缩，最终高度由内容上报维护
         let w = max(scroll.contentView.bounds.width, 100)
         if abs(hosting.frame.width - w) > 1 || hosting.frame.height < 10000 {
