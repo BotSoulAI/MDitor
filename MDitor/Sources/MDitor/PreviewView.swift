@@ -224,9 +224,10 @@ struct PreviewScrollView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let hosting = scroll.documentView as? NSHostingView<PreviewContent> else { return }
         hosting.rootView = PreviewContent(markdown: markdown, heightChanged: heightUpdater(for: scroll))
-        // 宽度跟随视口；高度先给足，让内容重新完整布局后由回调纠正
+        // 只跟随视口宽度，高度保持由内容上报维护（不得重置为固定值，
+        // 否则内容高度不变时 onChange 不触发、高度会停留在错误值上）
         let w = max(scroll.contentView.bounds.width, 100)
-        hosting.setFrameSize(NSSize(width: w, height: 10000))
+        hosting.setFrameSize(NSSize(width: w, height: hosting.frame.height))
         hosting.needsLayout = true
     }
 }
